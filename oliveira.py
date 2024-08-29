@@ -1,5 +1,3 @@
-#vc vai ter que instalar as bibliotecas, tá aqui o pip: pip install pandas openpyxl tk
-
 import pandas as pd
 import re
 from datetime import timedelta
@@ -22,8 +20,8 @@ def calcular_horas(row) -> Tuple[List[HorarioPar], str]:
     pares: List[HorarioPar] = []  # Lista que armazenará os pares de horários válidos
     start_time = None  # Variável para armazenar o horário de início
 
-    # Iterando sobre cada célula da linha
-    for celula in row:
+    # Iterando sobre cada célula da linha (exceto a primeira coluna que é a data)
+    for celula in row[1:]:
         # Regex para identificar o padrão "número-hora:minuto:segundo"
         padrao = r'(\d+)-(\d{2}):(\d{2}):(\d{2})'
         match = re.match(padrao, str(celula))  # Tenta casar a célula com o padrão
@@ -39,7 +37,9 @@ def calcular_horas(row) -> Tuple[List[HorarioPar], str]:
             
             # Se o número for 1 ou 6, trata-se de um horário de início (start)
             if numero in [1, 6]:
-                start_time = tempo_atual  # Armazena o horário de início
+                # Só armazena o horário de início se não houver um horário de início já armazenado
+                if start_time is None:
+                    start_time = tempo_atual  # Armazena o horário de início
                 
             # Se o número for 2, 3, 4, ou 5 e houver um horário de início armazenado,
             # trata-se de um horário de término (stop)
@@ -69,6 +69,12 @@ def abrir_e_processar_arquivo():
         # Lê o arquivo Excel em um DataFrame
         df = pd.read_excel(file_path)
 
+        # Converte a primeira coluna para datetime, interpretando-a como 'dia/mês/ano'
+        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], dayfirst=True)
+
+        # Lista para armazenar os resultados
+        resultados = []
+
         # Itera sobre cada linha do DataFrame
         for index, row in df.iterrows():
             # Calcula os pares de horários e o total de horas para a linha atual
@@ -78,11 +84,43 @@ def abrir_e_processar_arquivo():
             if pares is None:
                 continue
             
-            # Exibe os resultados no terminal
-            print(f"Linha {index + 1}:")
-            for par in pares:
-                print(f"  Par de Horários: Start = {str(par.start)}, Stop = {str(par.stop)}")
-            print(f"  Total de Horas: {total_horas}\n")
+            # Cria um dicionário para armazenar a data e os pares de horários
+            resultado_linha = {"Data": row[0].strftime('%d/%m/%Y')}  # Armazena a data formatada
+            
+            # Adiciona cada par de horários a colunas 'Start_n' e 'Stop_n'
+            for i, par in enumerate(pares):
+                resultado_linha[f"Start_{i+1}"] = str(par.start)
+                resultado_linha[f"Stop_{i+1}"] = str(par.stop)
+            
+            # Adiciona o total de horas após os pares de horários
+            resultado_linha["Total de Horas"] = total_horas
+            
+            # Adiciona o resultado processado à lista de resultados
+            resultados.append(resultado_linha)
+
+        # Cria um DataFrame para os resultados
+        df_resultados = pd.DataFrame(resultados)
+
+        # Reorganiza as colunas para garantir que "Total de Horas" fique após todos os 'Start' e 'Stop'
+        colunas_ordenadas = ['Data']  # Inicia com a coluna de data
+        for i in range(len(resultados[0]) // 2):  # Calcula a quantidade de pares
+            colunas_ordenadas.append(f"Start_{i+1}")
+            colunas_ordenadas.append(f"Stop_{i+1}")
+        colunas_ordenadas.append('Total de Horas')  # Adiciona a coluna "Total de Horas"
+
+        # Reorganiza o DataFrame para as colunas ordenadas
+        df_resultados = df_resultados.reindex(columns=colunas_ordenadas)
+
+        # Abre uma janela para salvar o arquivo Excel com os resultados
+        save_path = filedialog.asksaveasfilename(defaultextension=".xlsx", 
+                                                 filetypes=[("Excel files", "*.xlsx *.xls")],
+                                                 title="Salvar arquivo Excel de resultados")
+        
+        # Se o usuário escolheu um caminho para salvar
+        if save_path:
+            # Salva o DataFrame de resultados em um novo arquivo Excel
+            df_resultados.to_excel(save_path, index=False)
+            print(f"Resultados salvos em: {save_path}")
 
 # Configura a interface gráfica
 root = tk.Tk()
